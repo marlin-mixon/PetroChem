@@ -1,0 +1,535 @@
+<!doctype=html>
+<html>
+<head>
+<!--- jquery-1.7.1.min.js -->
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>
+var p;
+p = [];
+var plantPropertyList;
+var product;
+var currentPlayer = 0;
+var buyCount, invCount, selectedItem;
+var sequesterCo2 = false;
+function initAll() {
+    var i;
+    nHumanPlayers = 1;
+    nPlayers = 4;
+    for (i=0;i<nPlayers;i++) {
+        p[i] = {};
+        if (i<nHumanPlayers) {
+            p[i].type = "human";
+        } else {
+            p[i].type = "npc";
+        }
+        p[i].name = "Player " + i;
+        p[i].cash = "100000";
+        p[i].assetList = [
+            {"type":"plantProperty","name":"FlexStorage","subType":"storage","quantity":0, "quantityInUse":0},
+            {"type":"plantProperty","name":"Land","subType":"land","quantity":0, "quantityInUse":0},
+            {"type":"plantProperty","name":"ProductionFacility","subType":"production","quantity":0, "quantityInUse":0}
+        ];
+        p[i].productionList = [];
+        p[i].byProductList = [];
+    }
+    plantPropertyList = [        
+    ];
+    product = [
+        {"name":"ethanol",
+        "type":"manufactured good",
+        "ingredientList":[{"name":"corn","quantity":1.2},{"name":"water","quantity":4.5}],
+        "byProductList":[{"name":"yeasty sludge","quantity":4.5},{"name":"co2","quantity":1.2}],
+        "price":61}, 
+        {"name":"plastic",
+        "type":"manufactured good",
+        "ingredientList":[{"name":"crude oil","quantity":1.7}],
+        "byProductList":[{"name":"crusty sludge","quantity":0.4}, {"name":"co2","quantity":3.1}],
+        "price":88},
+        {"name":"ammonia",
+        "type":"manufactured good",
+        "ingredientList":[{"name":"natural gas","quantity":1.8},{"name":"water","quantity":0.4}],
+        "byProductList":[{"name":"co2","quantity":0.77}],
+        "price":43},
+        {"name":"crude oil",
+        "type":"resource",
+        "price":11},
+        {"name":"corn",
+        "type":"resource",
+        "price":6},
+        {"name":"water",
+        "type":"resource",
+        "price":0.2},
+        {"name":"natural gas",
+        "type":"resource",
+        "price":8.9},
+        {"name":"crusty sludge",
+        "type":"by product",
+        "disposal fee":1},
+        {"name":"yeasty sludge",
+        "type":"by product",
+        "disposal fee":0.7},
+        {"name":"co2",
+        "type":"by product",
+        "disposal fee":0.25},
+        {   // selling this asset returns 1/10 the current market value
+            "name":"FlexStorage",
+            "type":"plantProperty",
+            "subType":"storage",
+            "space":1000,
+            "price":12600,
+            "areaUsage":1
+        },
+        {   // selling this asset returns 1/10 the current market value
+            "name":"ProductionFacility",
+            "type":"plantProperty",
+            "subType":"production",
+            "maxUnitsPerDay":38,
+            "price":27480,
+            "areaUsage":0.5
+        },
+        {
+            "name":"Land",
+            "type":"plantProperty",
+            "subType":"land",
+            "price":1570,
+            "areaUsage":-1
+        }
+    ];
+    populateScreen();
+}
+function populateScreen() {
+    var i, pricesOut, inventoryOut, playerId, storageObj, productionObj, landObj;
+    playerId = p[currentPlayer].name;
+    document.getElementById("playerId").innerHTML = playerId
+    pricesOut = "";
+    pricesOut += "Manufactured Goods<br>\n<ul>\n";
+    buyCount = 0;
+    for (i=0;i<product.length;i++) {
+        if (product[i].type=="manufactured good") {
+            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+');">' + product[i].name + " - " + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
+            buyCount++;
+        }
+    }
+    pricesOut += "</ul>\n";
+    pricesOut += "Resources<br>\n<ul>\n";
+    for (i=0;i<product.length;i++) {
+        if (product[i].type=="resource") {
+            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+');">' + product[i].name + " - " + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
+            buyCount++;
+        }
+    }
+    pricesOut += "</ul>\n";
+    pricesOut += "Plant and Property<br>\n<ul>\n";
+    for (i=0;i<product.length;i++) {
+        if (product[i].type == "plantProperty") {
+            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+');">' + product[i].name + " - " + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
+            buyCount++;
+        }
+    }
+    pricesOut += "</ul>\n";
+    document.getElementById("priceList").innerHTML = pricesOut;    
+    inventoryOut = "";
+    inventoryOut += "Cash: $" + p[currentPlayer].cash + "<br>\n";
+    landObj = landAvailable(currentPlayer);
+    inventoryOut += "Land: " + landObj.quantityInUse + "/" + landObj.quantity + "<br>\n";
+    storageObj = storageAvailable(currentPlayer);
+    inventoryOut += "Storage: " + storageObj.quantityInUse + "/" + storageObj.quantity + "<br>\n";
+    productionObj = productionAvailable(currentPlayer);
+    inventoryOut += "Production: " + productionObj.quantityInUse + "/" + productionObj.quantity + "<br>\n";
+    inventoryOut += "Manufactured Goods<br>\n<ul>\n";
+    invCount = 0;
+    for (i=0;i<p[currentPlayer].assetList.length;i++) {
+        if (p[currentPlayer].assetList[i].type=="manufactured good") {
+            inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+i+');">' + p[currentPlayer].assetList[i].name + " - " + getPrice(p[currentPlayer].assetList[i].name) + " - $" + getPrice(p[currentPlayer].assetList[i].name) * p[currentPlayer].assetList[i].quantity + '</a><span id="span-inv-'+invCount+'"></span></li>\n';
+            invCount++;
+        }
+    }
+    inventoryOut += "</ul>\n";
+    inventoryOut += "Resources<br>\n<ul>\n";
+    for (i=0;i<p[currentPlayer].assetList.length;i++) {
+        if (p[currentPlayer].assetList[i].type=="resource") {
+            inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+i+');">' + p[currentPlayer].assetList[i].name  + ' - ' + p[currentPlayer].assetList[i].quantity +  '</a><span id="span-inv-'+invCount+'"></span></li>\n';
+            invCount++;
+        }
+    }
+    inventoryOut += "</ul>\n";
+    inventoryOut += "By Products<br>\n<ul>\n";
+    for (i=0;i<p[currentPlayer].byProductList.length;i++) {
+        inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+i+');">' + p[currentPlayer].byProductList[i].name + " - " + p[currentPlayer].byProductList[i].quantity + '</a><span id="span-inv-'+invCount+'"></span></li>\n';
+        invCount++;
+    }
+    inventoryOut += "</ul>\n";
+    document.getElementById("playerInventory").innerHTML = inventoryOut; 
+}
+function getPrice(itemName) {
+    var i;
+    for (i=0;i<product.length;i++) {
+        if (product[i].name == itemName) {
+            return product[i].price;
+        }
+    }
+    return 0;
+}
+function highlight(type, itemNo, theItemNo) {
+    var i, nMax;
+    if (type == "inv") {
+        nMax = invCount;
+    } else if (type == "buy") {
+        nMax = buyCount;
+    }
+    for (i=0;i<nMax;i++) {
+        $("#a-" + type + "-" + i).removeClass("selectedProduct");
+        $("#span-" + type + "-" + i).html("");
+    }
+    $("#a-" + type + "-" + itemNo).addClass("selectedProduct");
+    $("#span-" + type + "-" + itemNo).html("&nbsp;&nbsp;Qty: <input id=\"qty\" type=\"field\">");
+    selectedItem = theItemNo;
+}
+function purchaseAssets() {
+    var qty = $("#qty").val();
+    if ( qty == "") {
+        xalert("Need number of units in Quantity field.", "error");
+    } else {
+        if (! isNumber(qty)) {
+            xalert("Number of units in Quantity field is not numeric.", "error");
+        } else {
+            qty = parseFloat(qty);
+            if (product[selectedItem].subType == "land") {
+                if (p[currentPlayer].cash < qty * product[selectedItem].price) {
+                    xalert("You don't have enough money to buy that acreage.","error");
+                } else {
+                    p[currentPlayer].cash -= qty * product[selectedItem].price;
+                    addPropertyAsset(currentPlayer, "land", qty);
+                }
+            } else if (product[selectedItem].subType == "storage") {
+                if (p[currentPlayer].cash < qty * product[selectedItem].price) {
+                    xalert("You don't have enough money to buy that tank.","error");
+                } else {
+                    if (product[selectedItem].areaUsage * qty > landAvailable(currentPlayer).quantityRemaining) {
+                        xalert("You don't have enough land to place that tank.","error");
+                    } else {
+                        p[currentPlayer].cash -= qty * product[selectedItem].price;
+                        allocateLand(currentPlayer, qty * product[selectedItem].areaUsage);
+                        //expandStorageSpace(currentPlayer, qty * product[selectedItem].space);
+                        addPropertyAsset(currentPlayer, "storage", qty * product[selectedItem].space);
+                    }
+                }
+            } else if (product[selectedItem].subType == "production") {
+                if (p[currentPlayer].cash < qty * product[selectedItem].price) {
+                    xalert("You don't have enough money to buy that production facility.","error");
+                } else {
+                    if (product[selectedItem].areaUsage * qty > landAvailable(currentPlayer).quantityRemaining) {
+                        xalert("You don't have enough land to place that production facility.","error");
+                    } else {
+                        p[currentPlayer].cash -= qty * product[selectedItem].price;
+                        allocateLand(currentPlayer, qty * product[selectedItem].areaUsage);
+                        addPropertyAsset(currentPlayer, "production", qty * product[selectedItem].maxUnitsPerDay);
+                    }
+                }
+            } else if (product[selectedItem].type == "resource" || product[selectedItem].type == "manufactured good") {
+                if (p[currentPlayer].cash < qty * product[selectedItem].price) {
+                    xalert("You don't have enough money to buy that "+product[selectedItem].type+".","error");
+                } else {
+                    if (qty > storageAvailable(currentPlayer).quantityRemaining) {
+                        xalert("You don't have enough storage for that resource.","error");
+                    } else {
+                        p[currentPlayer].cash -= qty * product[selectedItem].price;
+                        allocateStorageSpace(currentPlayer, qty);
+                        addProductAsset(currentPlayer, product[selectedItem].name, product[selectedItem].type, qty);
+                    }
+                }
+            } else {
+                xalert("Don't know how to purchase " + product[selectedItem].type + ", yet");
+            }
+            populateScreen();
+        }
+    }
+}
+function addPropertyAsset(whom, what, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == what) {
+            p[whom].assetList[i].quantity += parseFloat(howMuch);
+        }
+    }
+}
+function addProductAsset(whom, what, whatType, howMuch) {
+    var i;
+    var gotIt = false;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].name == what) {
+            p[whom].assetList[i].quantity += parseFloat(howMuch);
+            gotIt = true;
+        }
+    }
+    if (! gotIt) {
+        p[whom].assetList[i] = {};
+        p[whom].assetList[i].name = what;
+        p[whom].assetList[i].quantity = parseFloat(howMuch);
+        p[whom].assetList[i].type = whatType;
+    }
+}
+function landAvailable(whom) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == 'land') {
+            return {"quantity":p[whom].assetList[i].quantity, "quantityRemaining":p[whom].assetList[i].quantity - p[whom].assetList[i].quantityInUse, "quantityInUse":p[whom].assetList[i].quantityInUse};
+        }
+    }
+    return 0;
+}
+function storageAvailable(whom) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == 'storage') {
+            return {"quantity":p[whom].assetList[i].quantity, "quantityRemaining":p[whom].assetList[i].quantity - p[whom].assetList[i].quantityInUse, "quantityInUse":p[whom].assetList[i].quantityInUse};
+        }
+    }
+    return 0;
+}
+function allocateStorageSpace(whom, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == 'storage') {
+            p[whom].assetList[i].quantityInUse += parseFloat(howMuch);
+        }
+    }
+}
+function deallocateStorageSpace(whom, howMuch) {
+    allocateStorageSpace(whom, -howMuch);
+}
+function expandStorageSpace(whom, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == 'storage') {
+            p[whom].assetList[i].quantity += parseFloat(howMuch);
+        }
+    }
+}
+function allocateLand(whom, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == 'land') {
+            p[whom].assetList[i].quantityInUse += parseFloat(howMuch);
+        }
+    }
+}
+function setProduction() {
+    var qty = $("#qty").val();
+    if ( qty == "") {
+        xalert("Need number of units in Quantity field.", "error");
+    } else {
+        if (! isNumber(qty)) {
+            xalert("Number of units in Quantity field is not numeric.", "error");
+        } else {
+            qty = parseFloat(qty);
+            if (product[selectedItem].type == "manufactured good") {
+                if (qty > productionAvailable(currentPlayer).quantityRemaining) {
+                    xalert("You don't have enough production capacity to produce that amount");
+                } else {
+                    allocateProductionCapacity(currentPlayer, qty);
+                    scheduleProduction(currentPlayer, product[selectedItem].name, qty);
+                }
+            } else {
+                xalert("Don't know how to produce " + product[selectedItem].type , "error");
+            }
+        }
+    }
+    populateScreen();
+}
+function productionAvailable(whom) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == 'production') {
+            return {"quantity":p[whom].assetList[i].quantity, "quantityRemaining":p[whom].assetList[i].quantity - p[whom].assetList[i].quantityInUse, "quantityInUse":p[whom].assetList[i].quantityInUse};
+        }
+    }
+    return 0;
+}
+function scheduleProduction(whom, what, howMuch) {
+    var i;
+    var gotIt = false;
+    for (i=0;i<p[whom].productionList.length;i++) {
+        if (p[whom].productionList[i].name == what) {
+            p[whom].productionList[i].quantity += parseFloat(howMuch);
+            gotIt = true;
+        }
+    }
+    if (! gotIt) {
+        p[whom].productionList[i] = {};
+        p[whom].productionList[i].name = what;
+        p[whom].productionList[i].quantity = parseFloat(howMuch);
+        p[whom].productionList[i].type = 'manufactured good';        
+    }
+}
+function allocateProductionCapacity(whom, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == 'production') {
+            p[whom].assetList[i].quantityInUse += parseFloat(howMuch);
+        }
+    }
+}
+
+function runTheTurn() {
+    var player, prodName, prodType, prodNo, prod, thisProductQty, maxProduction, maxStore, problemMsh, problem, problemResources;
+    for (player=0;player<p.length;player++) {
+        for (prod = 0;prod<p[player].productionList.length;prod++) {
+            prodName = p[player].productionList[prod].name;
+            prodType = p[player].productionList[prod].type;
+            for (i=0;i<product.length;i++) {
+                if (product[i].name == prodName) {
+                    prodNo = i;
+                }
+            }
+            maxProduction = p[player].productionList[prod].quantity;
+            if (maxProduction > 0) {
+                maxStore = storageAvailable(player).quantityRemaining;
+                problemMsg = "Production of "+ prodName +" limited by";
+                problem = false;
+                if (maxProduction > maxStore) {
+                    maxProduction = maxStore;
+                    problemMsg += " storage";
+                    problem = true;
+                } 
+                if (maxProduction > 0) { 
+                    // Check for exhaustion of resources
+                    problemResources = false;
+                    for (i=0;i<product[prodNo].ingredientList.length;i++) {
+                        thisProductQty = productOnHand(player, product[prodNo].ingredientList[i].name);
+                        if (product[prodNo].ingredientList[i].quantity * maxProduction > thisProductQty) {
+                            maxProduction = thisProductQty / product[prodNo].ingredientList[i].quantity;
+                            problemMsg +=  " " + product[prodNo].ingredientList[i].name;
+                            problem = true;
+                            problemResources = true;
+                        }
+                    }
+                    if (problemResources) {
+                        problemMsg += " resources available "
+                    }
+                }
+                if (maxProduction > 0) {
+                    // Check for by products plus the production amount maxing out storage
+                    byProductQty = maxProduction;
+                    for (i=0;i<product[prodNo].byProductList.length;i++) {
+                        if (product[prodNo].byProductList[i].name != "co2" || (product[prodNo].byProductList[i].name == "co2" && sequesterCo2)) {
+                            byProductQty += product[prodNo].byProductList[i].quantity * maxProduction;
+                        }
+                    }                       
+                    if (byProductQty * maxProduction > maxStore) {
+                        maxProduction = maxStore / byProductQty;
+                        problemMsg += " storage";
+                        problem = true; 
+                    }
+                } 
+                if (problem) {
+                    problemMsg += " " + maxProduction + " units produced.";
+                    xalert(problemMsg, "error");
+                }
+                if (maxProduction > 0) {
+                    // Safe for production
+
+                    // Deplete resources
+                    for (i=0;i<product[prodNo].ingredientList.length;i++) {
+                        depleteResource(player, product[prodNo].ingredientList[i].name, product[prodNo].ingredientList[i].quantity * maxProduction); 
+                        
+                    }
+
+                    // Accumulate by products                
+                    for (i=0;i<product[prodNo].byProductList.length;i++) {
+                        if (product[prodNo].byProductList[i].name != "co2" || (product[prodNo].byProductList[i].name == "co2" && sequesterCo2)) {
+                            accumulateProduct(player, product[prodNo].byProductList[i].name, product[prodNo].byProductList[i].type, product[prodNo].byProductList[i].quantity * maxProduction);
+                        }
+                    }
+
+                    // Accumulate manufactured good
+                    accumulateProduct(player, prodName, prodType, maxProduction);
+                }
+            }   
+        }
+    }
+    populateScreen();       
+}
+function productOnHand(whom, what) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].name == what) {
+            return p[whom].assetList[i].quantity;
+        }
+    }
+    return 0;
+}
+function depleteResource(whom, what, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].name == what) {
+            p[whom].assetList[i].quantity -= parseFloat(howMuch);
+        }
+    }
+    deallocateStorageSpace(whom, howMuch);
+}
+function accumulateProduct(whom, what, whatType, howMuch) {
+    var i;
+    var gotIt = false;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].name == what) {
+            p[whom].assetList[i].quantity += parseFloat(howMuch);
+            gotIt = true;
+        }
+    }
+    if (! gotIt) {
+        p[whom].assetList[i] = {};
+        p[whom].assetList[i].name = what;
+        p[whom].assetList[i].quantity = parseFloat(howMuch);
+        p[whom].assetList[i].type = whatType;
+    }
+    allocateStorageSpace(whom, howMuch);
+}
+function xalert(msg, type) {
+    alert(msg);
+}
+function isNumber(n) {
+  return !isNaN(parseFloat(n)) && isFinite(n);
+}
+
+</script>
+<style>
+
+.selectedProduct {
+    color: red;
+}
+</style>
+</head>
+<body>
+<script>
+$(document).ready(function() {
+    initAll();
+});
+</script>
+<div id="mainDisplay">
+<h1>PetroChem Game</h1>
+Player: <span id="playerId"></span><br><br>
+<table>
+<tr><td>Prices</td><td>&nbsp;</td><td>Inventory</td></tr>
+<tr>
+<td>
+<div id="priceList"></div>
+</td>
+<td>
+<button type="button" onClick="purchaseAssets();">Purchase</button><br>
+<button type="button" onClick="setProduction();">Set Production</button><br>
+<button type="button" onClick="runTheTurn();">Next Day</button><br>
+<button type="button">Sell</button><br>
+
+</td>
+<td>
+<div id="playerInventory"></div>
+</td>
+</tr>
+</table>
+</div>
+<script id="mainDisplayTpl" type="marlin/template">
+
+</script>
+</body>
+</html>
