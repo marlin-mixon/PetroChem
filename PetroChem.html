@@ -245,11 +245,77 @@ function purchaseAssets() {
         }
     }
 }
+function sellAssets() {
+    var qty = $("#qty").val();
+    if ( qty == "") {
+        xalert("Need number of units in Quantity field.", "error");
+    } else {
+        if (! isNumber(qty)) {
+            xalert("Number of units in Quantity field is not numeric.", "error");
+        } else {
+            qty = parseFloat(qty);
+            if (product[selectedItem].subType == "land") {
+                if (landAvailable(currentPlayer).quantityRemaining < qty) {
+                    xalert("You don't have enough unused land to sell that amount of acreage.","error");
+                } else {
+                    p[currentPlayer].cash += qty * product[selectedItem].price;
+                    removePropertyAsset(currentPlayer, "land", qty);
+                }
+            } else if (product[selectedItem].subType == "storage") {
+                if (confirm("Used storage is worth 10% of it's original value.  Do you still want to sell?")) {
+	                if (storageAvailable(currentPlayer).quantityRemaining < qty * product[selectedItem].space) {
+	                    xalert("You don't have enough unused storage to sell that tank.","error");
+	                } else {
+                        p[currentPlayer].cash += qty * 0.10 * product[selectedItem].price;
+                        deallocateLand(currentPlayer, qty * product[selectedItem].areaUsage);
+                        //expandStorageSpace(currentPlayer, qty * product[selectedItem].space);
+                        removePropertyAsset(currentPlayer, "storage", qty * product[selectedItem].space);	                    
+	                }
+            	}
+            } else if (product[selectedItem].subType == "production") {
+                if (p[currentPlayer].cash < qty * product[selectedItem].price) {
+                    xalert("You don't have enough money to buy that production facility.","error");
+                } else {
+                    if (product[selectedItem].areaUsage * qty > landAvailable(currentPlayer).quantityRemaining) {
+                        xalert("You don't have enough land to place that production facility.","error");
+                    } else {
+                        p[currentPlayer].cash -= qty * product[selectedItem].price;
+                        allocateLand(currentPlayer, qty * product[selectedItem].areaUsage);
+                        addPropertyAsset(currentPlayer, "production", qty * product[selectedItem].maxUnitsPerDay);
+                    }
+                }
+            } else if (product[selectedItem].type == "resource" || product[selectedItem].type == "manufactured good") {
+                if (p[currentPlayer].cash < qty * product[selectedItem].price) {
+                    xalert("You don't have enough money to buy that "+product[selectedItem].type+".","error");
+                } else {
+                    if (qty > storageAvailable(currentPlayer).quantityRemaining) {
+                        xalert("You don't have enough storage for that resource.","error");
+                    } else {
+                        p[currentPlayer].cash -= qty * product[selectedItem].price;
+                        allocateStorageSpace(currentPlayer, qty);
+                        addProductAsset(currentPlayer, product[selectedItem].name, product[selectedItem].type, qty);
+                    }
+                }
+            } else {
+                xalert("Don't know how to purchase " + product[selectedItem].type + ", yet");
+            }
+            populateScreen();
+        }
+    }
+}
 function addPropertyAsset(whom, what, howMuch) {
     var i;
     for (i=0;i<p[whom].assetList.length;i++) {
         if (p[whom].assetList[i].subType == what) {
             p[whom].assetList[i].quantity += parseFloat(howMuch);
+        }
+    }
+}
+function removePropertyAsset(whom, what, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == what) {
+            p[whom].assetList[i].quantity -= parseFloat(howMuch);
         }
     }
 }
@@ -311,6 +377,14 @@ function allocateLand(whom, howMuch) {
     for (i=0;i<p[whom].assetList.length;i++) {
         if (p[whom].assetList[i].subType == 'land') {
             p[whom].assetList[i].quantityInUse += parseFloat(howMuch);
+        }
+    }
+}
+function deallocateLand(whom, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].subType == 'land') {
+            p[whom].assetList[i].quantityInUse -= parseFloat(howMuch);
         }
     }
 }
@@ -438,12 +512,12 @@ function runTheTurn() {
                     // Accumulate by products                
                     for (i=0;i<product[prodNo].byProductList.length;i++) {
                         if (product[prodNo].byProductList[i].name != "co2" || (product[prodNo].byProductList[i].name == "co2" && sequesterCo2)) {
-                            accumulateProduct(player, product[prodNo].byProductList[i].name, product[prodNo].byProductList[i].type, product[prodNo].byProductList[i].quantity * maxProduction);
+                            accumulateProduct(player, product[prodNo].byProductList[i].name, "by product", product[prodNo].byProductList[i].quantity * maxProduction, p[player].byProductList);
                         }
                     }
 
                     // Accumulate manufactured good
-                    accumulateProduct(player, prodName, prodType, maxProduction);
+                    accumulateProduct(player, prodName, prodType, maxProduction, p[player].assetList);
                 }
             }   
         }
@@ -468,20 +542,20 @@ function depleteResource(whom, what, howMuch) {
     }
     deallocateStorageSpace(whom, howMuch);
 }
-function accumulateProduct(whom, what, whatType, howMuch) {
+function accumulateProduct(whom, what, whatType, howMuch, theObject) {
     var i;
     var gotIt = false;
-    for (i=0;i<p[whom].assetList.length;i++) {
-        if (p[whom].assetList[i].name == what) {
-            p[whom].assetList[i].quantity += parseFloat(howMuch);
+    for (i=0;i<theObject.length;i++) {
+        if (theObject[i].name == what) {
+            theObject[i].quantity += parseFloat(howMuch);
             gotIt = true;
         }
     }
     if (! gotIt) {
-        p[whom].assetList[i] = {};
-        p[whom].assetList[i].name = what;
-        p[whom].assetList[i].quantity = parseFloat(howMuch);
-        p[whom].assetList[i].type = whatType;
+        theObject[i] = {};
+        theObject[i].name = what;
+        theObject[i].quantity = parseFloat(howMuch);
+        theObject[i].type = whatType;
     }
     allocateStorageSpace(whom, howMuch);
 }
@@ -519,7 +593,7 @@ Player: <span id="playerId"></span><br><br>
 <button type="button" onClick="purchaseAssets();">Purchase</button><br>
 <button type="button" onClick="setProduction();">Set Production</button><br>
 <button type="button" onClick="runTheTurn();">Next Day</button><br>
-<button type="button">Sell</button><br>
+<button type="button" onClick="sellAssets();">Sell</button><br>
 
 </td>
 <td>
