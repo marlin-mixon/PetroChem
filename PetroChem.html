@@ -8,9 +8,11 @@ var p;
 p = [];
 var plantPropertyList;
 var product;
+var supplyDemand;
 var currentPlayer = 0;
 var buyCount, invCount, selectedItem;
 var sequesterCo2 = false;
+var currentlyHighlitType = "";
 function initAll() {
     var i;
     nHumanPlayers = 1;
@@ -63,14 +65,14 @@ function initAll() {
         "type":"resource",
         "price":8.9},
         {"name":"crusty sludge",
-        "type":"by product",
-        "disposal fee":1},
+        "type":"by-product",
+        "disposalFee":1},
         {"name":"yeasty sludge",
-        "type":"by product",
-        "disposal fee":0.7},
+        "type":"by-product",
+        "disposalFee":0.7},
         {"name":"co2",
-        "type":"by product",
-        "disposal fee":0.25},
+        "type":"by-product",
+        "disposalFee":0.25},
         {   // selling this asset returns 1/10 the current market value
             "name":"FlexStorage",
             "type":"plantProperty",
@@ -95,18 +97,33 @@ function initAll() {
             "areaUsage":-1
         }
     ];
+    supplyDemand = [
+    	{
+	    	"name":"plastic",
+	    	"stockPileQuantity":20000,
+	    	"maximumStockPile":50000,
+	    	"dailyDemand":80
+    	},
+    	{
+	    	"name":"crude oil",
+	    	"stockPileQuantity":40000,
+	    	"maximumStockPile":50000,
+	    	"dailyDemand":0
+    	},    	
+    ];
     populateScreen();
 }
 function populateScreen() {
-    var i, pricesOut, inventoryOut, playerId, storageObj, productionObj, landObj;
+    var i, prodNo, pricesOut, inventoryOut, playerId, storageObj, productionObj, landObj, contextButtonList;
     playerId = p[currentPlayer].name;
     document.getElementById("playerId").innerHTML = playerId
+    currentlyHighlitType = "";
     pricesOut = "";
     pricesOut += "Manufactured Goods<br>\n<ul>\n";
     buyCount = 0;
     for (i=0;i<product.length;i++) {
         if (product[i].type=="manufactured good") {
-            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+');">' + product[i].name + " - " + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
+            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+',0,[\'setProduction\',\'buy\',\'sell\']);">' + product[i].name + " - $" + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
             buyCount++;
         }
     }
@@ -114,7 +131,7 @@ function populateScreen() {
     pricesOut += "Resources<br>\n<ul>\n";
     for (i=0;i<product.length;i++) {
         if (product[i].type=="resource") {
-            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+');">' + product[i].name + " - " + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
+            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+',0,[\'buy\',\'sell\']);">' + product[i].name + " - $" + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
             buyCount++;
         }
     }
@@ -122,7 +139,7 @@ function populateScreen() {
     pricesOut += "Plant and Property<br>\n<ul>\n";
     for (i=0;i<product.length;i++) {
         if (product[i].type == "plantProperty") {
-            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+');">' + product[i].name + " - " + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
+            pricesOut += '<li><a  id="a-buy-'+buyCount+'" onclick="highlight(\'buy\', '+buyCount+', '+i+',0,[\'buy\',\'sell\']);">' + product[i].name + " - $" + product[i].price + '</a><span id="span-buy-'+buyCount+'"></span></li>\n';
             buyCount++;
         }
     }
@@ -136,11 +153,21 @@ function populateScreen() {
     inventoryOut += "Storage: " + storageObj.quantityInUse + "/" + storageObj.quantity + "<br>\n";
     productionObj = productionAvailable(currentPlayer);
     inventoryOut += "Production: " + productionObj.quantityInUse + "/" + productionObj.quantity + "<br>\n";
-    inventoryOut += "Manufactured Goods<br>\n<ul>\n";
+    inventoryOut += "<ul>\n";
     invCount = 0;
+    for (i=0;i<p[currentPlayer].productionList.length;i++) {
+        prodNo = lookupProdNo(p[currentPlayer].productionList[i].name);
+        inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+prodNo+','+p[currentPlayer].productionList[i].quantity+',[\'setProduction\',\'sell\',\'buy\']);">' + p[currentPlayer].productionList[i].name + " - " + p[currentPlayer].productionList[i].quantity + ' units/day </a><span id="span-inv-'+invCount+'"></span></li>\n';
+        invCount++;
+    }
+    inventoryOut += "</ul>"
+    
+    inventoryOut += "Manufactured Goods<br>\n<ul>\n";
+
     for (i=0;i<p[currentPlayer].assetList.length;i++) {
         if (p[currentPlayer].assetList[i].type=="manufactured good") {
-            inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+i+');">' + p[currentPlayer].assetList[i].name + " - " + getPrice(p[currentPlayer].assetList[i].name) + " - $" + getPrice(p[currentPlayer].assetList[i].name) * p[currentPlayer].assetList[i].quantity + '</a><span id="span-inv-'+invCount+'"></span></li>\n';
+            prodNo = lookupProdNo(p[currentPlayer].assetList[i].name);
+            inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+prodNo+','+productOnHand(currentPlayer, p[currentPlayer].assetList[i].name)+',[\'sell\',\'setProduction\',\'buy\']);">' + p[currentPlayer].assetList[i].name + " - " + productOnHand(currentPlayer, p[currentPlayer].assetList[i].name) + " units - $" + getPrice(p[currentPlayer].assetList[i].name) * p[currentPlayer].assetList[i].quantity + '</a><span id="span-inv-'+invCount+'"></span></li>\n';
             invCount++;
         }
     }
@@ -148,18 +175,29 @@ function populateScreen() {
     inventoryOut += "Resources<br>\n<ul>\n";
     for (i=0;i<p[currentPlayer].assetList.length;i++) {
         if (p[currentPlayer].assetList[i].type=="resource") {
-            inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+i+');">' + p[currentPlayer].assetList[i].name  + ' - ' + p[currentPlayer].assetList[i].quantity +  '</a><span id="span-inv-'+invCount+'"></span></li>\n';
+            prodNo = lookupProdNo(p[currentPlayer].assetList[i].name);
+            inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+prodNo+','+productOnHand(currentPlayer, p[currentPlayer].assetList[i].name)+',[\'buy\',\'sell\']);">' + p[currentPlayer].assetList[i].name  + ' - ' + p[currentPlayer].assetList[i].quantity +  '</a><span id="span-inv-'+invCount+'"></span></li>\n';
             invCount++;
         }
     }
     inventoryOut += "</ul>\n";
     inventoryOut += "By Products<br>\n<ul>\n";
     for (i=0;i<p[currentPlayer].byProductList.length;i++) {
-        inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+i+');">' + p[currentPlayer].byProductList[i].name + " - " + p[currentPlayer].byProductList[i].quantity + '</a><span id="span-inv-'+invCount+'"></span></li>\n';
+        prodNo = lookupProdNo(p[currentPlayer].byProductList[i].name);
+        inventoryOut += '<li><a id="a-inv-'+invCount+'" onclick="highlight(\'inv\', '+invCount+', '+prodNo+','+byProductOnHand(currentPlayer, p[currentPlayer].byProductList[i].name)+',[\'dispose\']);">' + p[currentPlayer].byProductList[i].name + " - " + p[currentPlayer].byProductList[i].quantity + '</a><span id="span-inv-'+invCount+'"></span></li>\n';
         invCount++;
     }
     inventoryOut += "</ul>\n";
     document.getElementById("playerInventory").innerHTML = inventoryOut; 
+}
+function getProductionLevel(whom, what) {
+    var i;
+    for (i=0;i<p[whom].productionList.length;i++) {
+        if (p[whom].productionList[i].name == what) {
+            return p[whom].productionList[i].quantity;
+        }
+    }
+    return 0;
 }
 function getPrice(itemName) {
     var i;
@@ -170,8 +208,12 @@ function getPrice(itemName) {
     }
     return 0;
 }
-function highlight(type, itemNo, theItemNo) {
-    var i, nMax;
+function highlight(type, itemNo, theItemNo, defaultQty, contextButtonList) {
+    var i, nMax, contextButtonOut = "";
+    if (currentlyHighlitType != "" && currentlyHighlitType != type) {
+        killNumberSpinner(currentlyHighlitType);
+    }
+    currentlyHighlitType = type;
     if (type == "inv") {
         nMax = invCount;
     } else if (type == "buy") {
@@ -182,10 +224,31 @@ function highlight(type, itemNo, theItemNo) {
         $("#span-" + type + "-" + i).html("");
     }
     $("#a-" + type + "-" + itemNo).addClass("selectedProduct");
-    $("#span-" + type + "-" + itemNo).html("&nbsp;&nbsp;Qty: <input id=\"qty\" type=\"field\">");
+    numberSpinner = $("#numberSpinnerTpl").html();
+    numberSpinner = numberSpinner.replace(/--default-qty--/, defaultQty);
+    contextButtonOut = "";
+    for (i=0;i<contextButtonList.length;i++) {
+        contextButtonOut += $("#" + contextButtonList[i] + "ButtonTpl").html() + "&nbsp;"
+    }
+    numberSpinner = numberSpinner.replace(/--context-buttons--/, contextButtonOut);
+    $("#span-" + type + "-" + itemNo).html(numberSpinner);
+    // $("#qty").focus();
+
     selectedItem = theItemNo;
+
 }
-function purchaseAssets() {
+function killNumberSpinner(type) {
+    if (type == "inv") {
+        nMax = invCount;
+    } else if (type == "buy") {
+        nMax = buyCount;
+    }
+    for (i=0;i<nMax;i++) {
+        $("#a-" + type + "-" + i).removeClass("selectedProduct");
+        $("#span-" + type + "-" + i).html("");
+    }
+}
+function buyAssets() {
     var qty = $("#qty").val();
     if ( qty == "") {
         xalert("Need number of units in Quantity field.", "error");
@@ -239,7 +302,7 @@ function purchaseAssets() {
                     }
                 }
             } else {
-                xalert("Don't know how to purchase " + product[selectedItem].type + ", yet");
+                xalert("Don't know how to buy " + product[selectedItem].type + ", yet");
             }
             populateScreen();
         }
@@ -256,52 +319,63 @@ function sellAssets() {
             qty = parseFloat(qty);
             if (product[selectedItem].subType == "land") {
                 if (landAvailable(currentPlayer).quantityRemaining < qty) {
-                    xalert("You don't have enough unused land to sell that amount of acreage.","error");
+                    xalert("You don't have enough unused land.  You can only sell land that is unused.","error");
                 } else {
                     p[currentPlayer].cash += qty * product[selectedItem].price;
                     removePropertyAsset(currentPlayer, "land", qty);
                 }
             } else if (product[selectedItem].subType == "storage") {
                 if (confirm("Used storage is worth 10% of it's original value.  Do you still want to sell?")) {
-	                if (storageAvailable(currentPlayer).quantityRemaining < qty * product[selectedItem].space) {
-	                    xalert("You don't have enough unused storage to sell that tank.","error");
+	                if (storageAvailable(currentPlayer).quantityRemaining < qty * product[selectedItem].quantity) {
+	                    xalert("You can only sell storage if it's not in use.  Free up storage before selling it.","error");
 	                } else {
                         p[currentPlayer].cash += qty * 0.10 * product[selectedItem].price;
                         deallocateLand(currentPlayer, qty * product[selectedItem].areaUsage);
-                        //expandStorageSpace(currentPlayer, qty * product[selectedItem].space);
-                        removePropertyAsset(currentPlayer, "storage", qty * product[selectedItem].space);	                    
+                        deallocateStorageSpace(currentPlayer, product[selectedItem].space * qty)
+                        removePropertyAsset(currentPlayer, "storage", qty );	                    
 	                }
             	}
             } else if (product[selectedItem].subType == "production") {
-                if (p[currentPlayer].cash < qty * product[selectedItem].price) {
-                    xalert("You don't have enough money to buy that production facility.","error");
-                } else {
-                    if (product[selectedItem].areaUsage * qty > landAvailable(currentPlayer).quantityRemaining) {
-                        xalert("You don't have enough land to place that production facility.","error");
+                if (confirm("Used production facilities are worth 10% of original value.  Do you still want to sell?")) {
+                    if (productionAvailable(currentPlayer).quantityRemaining < qty * product[selectedItem].quantity) {
+                        xalert("You don't have enough unused production capacity to sell that production facility.","error");
                     } else {
-                        p[currentPlayer].cash -= qty * product[selectedItem].price;
-                        allocateLand(currentPlayer, qty * product[selectedItem].areaUsage);
-                        addPropertyAsset(currentPlayer, "production", qty * product[selectedItem].maxUnitsPerDay);
+                        p[currentPlayer].cash += qty * 0.10 * product[selectedItem].price;
+                        deallocateLand(currentPlayer, qty * product[selectedItem].areaUsage);
+                        removePropertyAsset(currentPlayer, "production", qty);                        
                     }
                 }
             } else if (product[selectedItem].type == "resource" || product[selectedItem].type == "manufactured good") {
-                if (p[currentPlayer].cash < qty * product[selectedItem].price) {
-                    xalert("You don't have enough money to buy that "+product[selectedItem].type+".","error");
+                if (productOnHand(currentPlayer, product[selectedItem].name)  < qty) {
+                    xalert("You can't sell what you don't have.","error");
                 } else {
-                    if (qty > storageAvailable(currentPlayer).quantityRemaining) {
-                        xalert("You don't have enough storage for that resource.","error");
+ 
+                        p[currentPlayer].cash += qty * product[selectedItem].price;
+                        deallocateStorageSpace(currentPlayer, qty);
+                        removeProductAsset(currentPlayer, product[selectedItem].name, qty);
+                    
+                }
+            } else if (product[selectedItem].type == "by-product") {
+                if (byProductOnHand(currentPlayer, product[selectedItem].name)  < qty) {
+                    xalert("You can't dispose of what you don't have.","error");
+                } else {
+                    if (p[currentPlayer].cash < product[selectedItem].disposalFee * qty) {
+                        xalert("You can't afford to dispose of that by-product.  How sad!", "error");
                     } else {
-                        p[currentPlayer].cash -= qty * product[selectedItem].price;
-                        allocateStorageSpace(currentPlayer, qty);
-                        addProductAsset(currentPlayer, product[selectedItem].name, product[selectedItem].type, qty);
+                        p[currentPlayer].cash -= qty * product[selectedItem].disposalFee;
+                        deallocateStorageSpace(currentPlayer, qty);
+                        removeByProduct(currentPlayer, product[selectedItem].name, qty);
                     }
                 }
             } else {
-                xalert("Don't know how to purchase " + product[selectedItem].type + ", yet");
+                xalert("Don't know how to sell " + product[selectedItem].type + ", yet");
             }
             populateScreen();
         }
     }
+}
+function disposeByProducts() {
+    sellAssets();
 }
 function addPropertyAsset(whom, what, howMuch) {
     var i;
@@ -333,6 +407,22 @@ function addProductAsset(whom, what, whatType, howMuch) {
         p[whom].assetList[i].name = what;
         p[whom].assetList[i].quantity = parseFloat(howMuch);
         p[whom].assetList[i].type = whatType;
+    }
+}
+function removeProductAsset(whom, what, howMuch) {
+    var i;
+    for (i=0;i<p[whom].assetList.length;i++) {
+        if (p[whom].assetList[i].name == what) {
+            p[whom].assetList[i].quantity -= parseFloat(howMuch);
+        }
+    }
+}
+function removeByProduct(whom, what, howMuch) {
+    var i;
+    for (i=0;i<p[whom].byProductList.length;i++) {
+        if (p[whom].byProductList[i].name == what) {
+            p[whom].byProductList[i].quantity -= parseFloat(howMuch);
+        }
     }
 }
 function landAvailable(whom) {
@@ -397,6 +487,7 @@ function setProduction() {
             xalert("Number of units in Quantity field is not numeric.", "error");
         } else {
             qty = parseFloat(qty);
+            //qty needs to be an absolute amount, not an incremental
             if (product[selectedItem].type == "manufactured good") {
                 if (qty > productionAvailable(currentPlayer).quantityRemaining) {
                     xalert("You don't have enough production capacity to produce that amount");
@@ -451,11 +542,7 @@ function runTheTurn() {
         for (prod = 0;prod<p[player].productionList.length;prod++) {
             prodName = p[player].productionList[prod].name;
             prodType = p[player].productionList[prod].type;
-            for (i=0;i<product.length;i++) {
-                if (product[i].name == prodName) {
-                    prodNo = i;
-                }
-            }
+            prodNo = lookupProdNo(prodName);
             maxProduction = p[player].productionList[prod].quantity;
             if (maxProduction > 0) {
                 maxStore = storageAvailable(player).quantityRemaining;
@@ -483,14 +570,14 @@ function runTheTurn() {
                     }
                 }
                 if (maxProduction > 0) {
-                    // Check for by products plus the production amount maxing out storage
+                    // Check for by-products plus the production amount maxing out storage
                     byProductQty = maxProduction;
                     for (i=0;i<product[prodNo].byProductList.length;i++) {
                         if (product[prodNo].byProductList[i].name != "co2" || (product[prodNo].byProductList[i].name == "co2" && sequesterCo2)) {
                             byProductQty += product[prodNo].byProductList[i].quantity * maxProduction;
                         }
                     }                       
-                    if (byProductQty * maxProduction > maxStore) {
+                    if (byProductQty > maxStore) {
                         maxProduction = maxStore / byProductQty;
                         problemMsg += " storage";
                         problem = true; 
@@ -509,10 +596,10 @@ function runTheTurn() {
                         
                     }
 
-                    // Accumulate by products                
+                    // Accumulate by-products                
                     for (i=0;i<product[prodNo].byProductList.length;i++) {
                         if (product[prodNo].byProductList[i].name != "co2" || (product[prodNo].byProductList[i].name == "co2" && sequesterCo2)) {
-                            accumulateProduct(player, product[prodNo].byProductList[i].name, "by product", product[prodNo].byProductList[i].quantity * maxProduction, p[player].byProductList);
+                            accumulateProduct(player, product[prodNo].byProductList[i].name, "by-product", product[prodNo].byProductList[i].quantity * maxProduction, p[player].byProductList);
                         }
                     }
 
@@ -529,6 +616,15 @@ function productOnHand(whom, what) {
     for (i=0;i<p[whom].assetList.length;i++) {
         if (p[whom].assetList[i].name == what) {
             return p[whom].assetList[i].quantity;
+        }
+    }
+    return 0;
+}
+function byProductOnHand(whom, what) {
+    var i;
+    for (i=0;i<p[whom].byProductList.length;i++) {
+        if (p[whom].byProductList[i].name == what) {
+            return p[whom].byProductList[i].quantity;
         }
     }
     return 0;
@@ -565,12 +661,34 @@ function xalert(msg, type) {
 function isNumber(n) {
   return !isNaN(parseFloat(n)) && isFinite(n);
 }
-
+function lookupProdNo(what) {
+    var i;
+    for (i=0;i<product.length;i++) {
+        if (product[i].name == what) {
+            return i;
+        }
+    }
+    return -1;
+}
+function accumQty(amt) {
+    if (isNumber($("#qty").val())) {
+        $("#qty").val($("#qty").val() - -amt);
+    }
+}
 </script>
 <style>
 
 .selectedProduct {
     color: red;
+}
+.qty-class {
+    width:60px;
+}
+#numberSpinner {
+    position:absolute;
+    border-color: black;
+    border-width: 1px;
+    background-color: #bada55;
 }
 </style>
 </head>
@@ -583,27 +701,41 @@ $(document).ready(function() {
 <div id="mainDisplay">
 <h1>PetroChem Game</h1>
 Player: <span id="playerId"></span><br><br>
+<button type="button" onClick="runTheTurn();">Next Day</button><br>
 <table>
-<tr><td>Prices</td><td>&nbsp;</td><td>Inventory</td></tr>
+<tr><td>Prices</td><td>Inventory</td></tr>
 <tr>
 <td>
 <div id="priceList"></div>
 </td>
-<td>
-<button type="button" onClick="purchaseAssets();">Purchase</button><br>
-<button type="button" onClick="setProduction();">Set Production</button><br>
-<button type="button" onClick="runTheTurn();">Next Day</button><br>
-<button type="button" onClick="sellAssets();">Sell</button><br>
 
-</td>
 <td>
 <div id="playerInventory"></div>
 </td>
 </tr>
 </table>
 </div>
-<script id="mainDisplayTpl" type="marlin/template">
-
+<script id="numberSpinnerTpl" type="marlin/template">
+<div id="numberSpinner">
+<table>
+<tr><td><button onclick="accumQty(1);">&nbsp;&and;&nbsp;</button>&nbsp;<button onclick="accumQty(10);">&nbsp;&and;&and;&nbsp;</button>&nbsp;<button onclick="accumQty(100);">&nbsp;&and;&and;&and;&nbsp;</button></td></tr>
+<tr><td><input type="text" class="qty-class" id="qty" value="--default-qty--">--context-buttons--</td></tr>
+<tr><td>&nbsp;<button onclick="accumQty(-1);">&nbsp;&or;&nbsp;</button>&nbsp;<button onclick="accumQty(-10);">&nbsp;&or;&or;&nbsp;</button>&nbsp;<button onclick="accumQty(-100);">&nbsp;&or;&or;&or;&nbsp;</button></td></tr>
+</table>
+</div>
+</script>
+<script id="buyButtonTpl" type="marlin/template">
+<button type="button" onClick="buyAssets();">Buy</button>
+</script>
+<script id="sellButtonTpl" type="marlin/template">
+<button type="button" onClick="sellAssets();">Sell</button>
+</script>
+<script id="setProductionButtonTpl" type="marlin/template">
+<button type="button" onClick="setProduction();">Set Production</button>
+</script>
+<script id="disposeButtonTpl" type="marlin/template">
+<button type="button" onClick="disposeByProducts();">Dispose</button>
 </script>
 </body>
 </html>
+
