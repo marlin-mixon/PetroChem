@@ -13,6 +13,7 @@ var currentPlayer = 0;
 var buyCount, invCount, selectedItem;
 var sequesterCo2 = false;
 var currentlyHighlitType = "";
+var theDay = 1;
 function initAll() {
     var i;
     nHumanPlayers = 1;
@@ -100,15 +101,23 @@ function initAll() {
     supplyDemand = [
     	{
 	    	"name":"plastic",
-	    	"stockPileQuantity":20000,
-	    	"maximumStockPile":50000,
-	    	"dailyDemand":80
+	    	"stockpileQuantity":20000,
+	    	"stockpileTargetQuantity":20000,
+	    	"standardPrice":88,
+	    	"dailyDemand":80,
+            "dailySupply":0,
+            "price":88,
+            "lastPrice":88
     	},
     	{
 	    	"name":"crude oil",
-	    	"stockPileQuantity":40000,
-	    	"maximumStockPile":50000,
-	    	"dailyDemand":0
+	    	"stockpileQuantity":40000,
+	    	"stockpileTargetQuantity":40000,
+	    	"standardPrice":11,
+	    	"dailyDemand":0,
+            "dailySupply":200,
+            "price":11,
+            "lastPrice":11
     	},    	
     ];
     populateScreen();
@@ -116,7 +125,8 @@ function initAll() {
 function populateScreen() {
     var i, prodNo, pricesOut, inventoryOut, playerId, storageObj, productionObj, landObj, contextButtonList;
     playerId = p[currentPlayer].name;
-    document.getElementById("playerId").innerHTML = playerId
+    $("#playerId").html(playerId);
+    $("#theDay").html(theDay);
     currentlyHighlitType = "";
     pricesOut = "";
     pricesOut += "Manufactured Goods<br>\n<ul>\n";
@@ -352,7 +362,7 @@ function sellAssets() {
  
                         p[currentPlayer].cash += qty * product[selectedItem].price;
                         deallocateStorageSpace(currentPlayer, qty);
-                        removeProductAsset(currentPlayer, product[selectedItem].name, qty);
+                        removeProductAsset(currentPlayer, product[selectedItem].name, qty, "increase supply");
                     
                 }
             } else if (product[selectedItem].type == "by-product") {
@@ -408,14 +418,29 @@ function addProductAsset(whom, what, whatType, howMuch) {
         p[whom].assetList[i].quantity = parseFloat(howMuch);
         p[whom].assetList[i].type = whatType;
     }
+	decreaseSupply(what, howMuch);    
 }
-function removeProductAsset(whom, what, howMuch) {
+function removeProductAsset(whom, what, howMuch, type) {
     var i;
     for (i=0;i<p[whom].assetList.length;i++) {
         if (p[whom].assetList[i].name == what) {
             p[whom].assetList[i].quantity -= parseFloat(howMuch);
         }
     }
+    if (type == "increase supply") {
+        increaseSupply(what, howMuch);
+    }
+}
+function increaseSupply(what, howMuch) {
+    var i;
+    for (i=0;i<supplyDemand.length;i++) {
+        if (supplyDemand[i].name == what) {
+            supplyDemand[i].stockpileQuantity += howMuch; 
+        }
+    }
+}
+function decreaseSupply(what, howMuch) {
+    increaseSupply(what, -howMuch);
 }
 function removeByProduct(whom, what, howMuch) {
     var i;
@@ -538,6 +563,7 @@ function allocateProductionCapacity(whom, howMuch) {
 
 function runTheTurn() {
     var player, prodName, prodType, prodNo, prod, thisProductQty, maxProduction, maxStore, problemMsh, problem, problemResources;
+    theDay++;
     for (player=0;player<p.length;player++) {
         for (prod = 0;prod<p[player].productionList.length;prod++) {
             prodName = p[player].productionList[prod].name;
@@ -609,6 +635,7 @@ function runTheTurn() {
             }   
         }
     }
+    supplyDemandCalc();
     populateScreen();       
 }
 function productOnHand(whom, what) {
@@ -637,6 +664,7 @@ function depleteResource(whom, what, howMuch) {
         }
     }
     deallocateStorageSpace(whom, howMuch);
+    decreaseSupply(what, howMuch)
 }
 function accumulateProduct(whom, what, whatType, howMuch, theObject) {
     var i;
@@ -654,6 +682,26 @@ function accumulateProduct(whom, what, whatType, howMuch, theObject) {
         theObject[i].type = whatType;
     }
     allocateStorageSpace(whom, howMuch);
+}
+function supplyDemandCalc() {
+    var i;
+    for (i=0;i<supplyDemand.length;i++) {
+		supplyDemand[i].stockpileQuantity += supplyDemand[i].dailySupply;
+		supplyDemand[i].stockpileQuantity -= supplyDemand[i].dailyDemand;
+		// Evaluate Pricing
+		newPrice = (0.35*supplyDemand[i].standardPrice)/(supplyDemand[i].stockpileTargetQuantity - supplyDemand[i].stockpileQuantity);
+		supplyDemand[i].lastPrice = supplyDemand[i].price;
+		supplyDemand[i].price += newPrice;
+		setProductPrice(supplyDemand[i].name, supplyDemand[i].price)
+    }
+}
+function setProductPrice(what, thePrice) {
+	var i;
+	for (i=0;i<product.length;i++) {
+		if (product[i].name == what) {
+			product[i].price = thePrice;
+		}
+	}
 }
 function xalert(msg, type) {
     alert(msg);
@@ -700,9 +748,20 @@ $(document).ready(function() {
 </script>
 <div id="mainDisplay">
 <h1>PetroChem Game</h1>
-Player: <span id="playerId"></span><br><br>
-<button type="button" onClick="runTheTurn();">Next Day</button><br>
 <table>
+<tr>
+<td>Player: <span id="playerId"></span></td><td>Day: <span id="theDay"></span></td>
+</tr>
+<tr>
+<td colspan="2">
+<textarea id="dailyreport"></textarea>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<button type="button" onClick="runTheTurn();">Next Day</button>
+</td>
+</tr>
 <tr><td>Prices</td><td>Inventory</td></tr>
 <tr>
 <td>
@@ -738,4 +797,5 @@ Player: <span id="playerId"></span><br><br>
 </script>
 </body>
 </html>
+
 
