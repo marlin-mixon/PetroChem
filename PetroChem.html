@@ -9,11 +9,13 @@ p = [];
 var plantPropertyList;
 var product;
 var supplyDemand;
+var challenge;
 var currentPlayer = 0;
 var buyCount, invCount, selectedItem;
 var sequesterCo2 = false;
 var currentlyHighlitType = "";
 var theDay = 1;
+var challengeNo = 0;
 function initAll() {
     var i;
     nHumanPlayers = 1;
@@ -98,6 +100,8 @@ function initAll() {
             "areaUsage":-1
         }
     ];
+
+    // Any product not listed in supplyDemand will have a constant unchanging price
     supplyDemand = [
     	{
 	    	"name":"plastic",
@@ -110,6 +114,16 @@ function initAll() {
             "lastPrice":88
     	},
     	{
+	    	"name":"ethanol",
+	    	"stockpileQuantity":10000,
+	    	"stockpileTargetQuantity":10000,
+	    	"standardPrice":98,
+	    	"dailyDemand":20,
+            "dailySupply":0,
+            "price":61,
+            "lastPrice":61
+    	},    	
+    	{
 	    	"name":"crude oil",
 	    	"stockpileQuantity":40000,
 	    	"stockpileTargetQuantity":40000,
@@ -120,10 +134,23 @@ function initAll() {
             "lastPrice":11
     	},    	
     ];
+    challenge = [
+        {
+            "number": 1,
+            "days": 30,
+            "cashGoal": 350000
+        }
+    ];
     populateScreen();
 }
 function populateScreen() {
-    var i, prodNo, pricesOut, inventoryOut, playerId, storageObj, productionObj, landObj, contextButtonList;
+    var i, prodNo, pricesOut, inventoryOut, playerId, storageObj, productionObj, landObj, contextButtonList, mess;
+    if (theDay == 1) {
+        mess = $("#challenge-" + challenge[challengeNo].number).html();
+        $("#dailyreport").html(mess);
+    } else {
+        $("#dailyreport").html("");
+    }
     playerId = p[currentPlayer].name;
     $("#playerId").html(playerId);
     $("#theDay").html(theDay);
@@ -636,7 +663,20 @@ function runTheTurn() {
         }
     }
     supplyDemandCalc();
-    populateScreen();       
+    populateScreen();
+    if (challenge[challengeNo].days <= theDay-1) {
+        if (challenge[challengeNo].cashGoal <= (p[0].cash ) ) {
+            xalert("You did it");
+            challengeNo++;
+            if (challengeNo < challenge.length) {
+                xalert("On to the next mission...");
+                challengeNo++;
+            }
+        } else {
+            xalert("Epic fail");
+        }
+        theDay = 1;
+    }       
 }
 function productOnHand(whom, what) {
     var i;
@@ -738,6 +778,10 @@ function accumQty(amt) {
     border-width: 1px;
     background-color: #bada55;
 }
+#dailyReport {
+    width: 440px;
+    height: 100px;
+}
 </style>
 </head>
 <body>
@@ -795,7 +839,17 @@ $(document).ready(function() {
 <script id="disposeButtonTpl" type="marlin/template">
 <button type="button" onClick="disposeByProducts();">Dispose</button>
 </script>
+<script id="challenge-1" type="marlin/template">
+Your uncle Bob owns a chemical Company and has 
+provided you with $100,000 to build a small
+plant in your town.  He needs a vacation and 
+is leaving it to you to get the operation 
+rolling.  Uncle Bob will be back in a month.  
+Can you get the operation rolling and have 
+$350,000 in cash by the time he returns?
+</script>
 </body>
 </html>
+
 
 
